@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FrameNet Norm Space — semantic frames in affective, sensorimotor and conceptual dimensions</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #1a1a19;
+    --panel: rgba(36, 36, 34, 0.94);
+    --fg: #f0efec;
+    --muted: #c3c2b7;
+    --faint: #8d8c85;
+    --border: #3a3a37;
+    --accent: #3987e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #plot { position: fixed; inset: 0; }
+  a { color: #6da7ec; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  header { position: fixed; top: 0; left: 0; right: 0; z-index: 5; padding: 14px 20px 10px;
+    pointer-events: none; background: linear-gradient(180deg, rgba(26,26,25,.95) 0%, rgba(26,26,25,0) 100%); }
+  header h1 { margin: 0; font-size: 17px; font-weight: 650; }
+  header p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); max-width: 720px; line-height: 1.45; }
+  header a { pointer-events: auto; }
+
+  #controls { position: fixed; top: 100px; left: 16px; z-index: 6; width: 250px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px 12px; font-size: 12.5px; max-height: calc(100vh - 120px); overflow-y: auto; }
+  #controls h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--faint); font-weight: 600; }
+  .row { display: grid; grid-template-columns: 54px 1fr; align-items: center; gap: 6px; margin: 5px 0; }
+  .row label { color: var(--muted); }
+  select, input[type=search] { width: 100%; background: #262624; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font-size: 12.5px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .sep { border-top: 1px solid var(--border); margin: 10px 0 8px; }
+  .hint { color: var(--faint); font-size: 11.5px; line-height: 1.4; margin-top: 4px; }
+  #collapse { float: right; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; }
+  #controls.min .body { display: none; }
+
+  #panel { position: fixed; top: 100px; right: 16px; bottom: 16px; z-index: 6; width: 380px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; font-size: 12.5px; overflow-y: auto; display: none; }
+  #panel.open { display: block; }
+  #panel h3 { margin: 0 24px 2px 0; font-size: 16px; }
+  #panel .sub { color: var(--muted); margin-bottom: 8px; }
+  #panel .def { line-height: 1.5; color: var(--fg); margin: 8px 0 10px; }
+  #panel .close { position: absolute; top: 8px; right: 10px; background: none; border: 0;
+    color: var(--muted); font-size: 18px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 3px 4px; text-align: right; border-bottom: 1px solid #2c2c2a; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--faint); font-weight: 600; font-size: 11px; position: sticky; top: -12px; background: #242422; }
+  td.est { color: var(--faint); font-style: italic; }
+  .k { color: var(--faint); font-size: 11px; }
+  details summary { cursor: pointer; color: var(--muted); margin: 10px 0 4px; }
+  .muted { color: var(--faint); }
+
+  #loading { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center;
+    justify-content: center; background: var(--bg); color: var(--muted); font-size: 14px; transition: opacity .4s; }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  #meta { position: fixed; bottom: 10px; left: 16px; z-index: 5; font-size: 11px; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; }
+  @media (max-width: 760px) {
+    #controls { width: calc(100vw - 32px); top: 96px; }
+    #panel { left: 16px; width: auto; top: 40vh; }
+  }
+</style>
+</head>
+<body>
+<div id="plot"></div>
+<header>
+  <h1>FrameNet Norm Space</h1>
+  <p>Each point is a FrameNet 1.7 semantic frame, placed by the average psycholinguistic norm
+  ratings of its trigger words. Choose any three norms for the axes · drag to rotate · scroll to zoom ·
+  hover for a summary · click a frame for its full details. <a href="#about" id="aboutlink">About the data</a></p>
+</header>
+
+<div id="controls">
+  <button id="collapse" title="Collapse">–</button>
+  <h2>View</h2>
+  <div class="body">
+    <div class="row"><label for="x">X axis</label><select id="x"></select></div>
+    <div class="row"><label for="y">Y axis</label><select id="y"></select></div>
+    <div class="row"><label for="z">Z axis</label><select id="z"></select></div>
+    <div class="sep"></div>
+    <div class="row"><label for="color">Colour</label><select id="color"></select></div>
+    <div class="row" id="grouprow"><label for="group">Group</label><select id="group"></select></div>
+    <div class="row"><label for="size">Size</label><select id="size"></select></div>
+    <div class="hint" id="sizehint"></div>
+    <div class="sep"></div>
+    <div class="row"><label for="minn">Min words</label><input type="range" id="minn" min="1" max="20" value="1" /></div>
+    <div class="hint" id="minnlabel"></div>
+    <div class="sep"></div>
+    <div class="row"><label for="search">Find</label><input type="search" id="search" list="framelist" placeholder="frame name…" /></div>
+    <datalist id="framelist"></datalist>
+  </div>
+</div>
+
+<div id="panel"><button class="close" id="closepanel" title="Close">×</button><div id="panelbody"></div></div>
+<div id="loading">Loading frames…</div>
+<div id="meta"></div>
+
+<script>
+const LABEL = {
+  valence: "Valence", arousal: "Arousal", dominance: "Dominance",
+  concreteness: "Concreteness", imageability: "Imageability", semantic_size: "Semantic size",
+  auditory: "Auditory", gustatory: "Gustatory", haptic: "Haptic", interoceptive: "Interoceptive",
+  olfactory: "Olfactory", visual: "Visual",
+  foot_leg: "Foot / leg", hand_arm: "Hand / arm", head: "Head", mouth: "Mouth / throat", torso: "Torso",
+};
+const FAMILY = [
+  ["Affective (Warriner / Glasgow, 1–9)", ["valence", "arousal", "dominance"]],
+  ["Conceptual (Glasgow, 1–7)", ["concreteness", "imageability", "semantic_size"]],
+  ["Perceptual (Lancaster, 0–5)", ["auditory", "gustatory", "haptic", "interoceptive", "olfactory", "visual"]],
+  ["Action effector (Lancaster, 0–5)", ["foot_leg", "hand_arm", "head", "mouth", "torso"]],
+];
+const SCALE = n => ["valence","arousal","dominance"].includes(n) ? "1–9"
+  : ["concreteness","imageability","semantic_size"].includes(n) ? "1–7" : "0–5";
+// Sequential blue ramp, stepped for the dark surface (light = high).
+const SEQ = [[0, "#184f95"], [0.33, "#2a78d6"], [0.66, "#6da7ec"], [1, "#cde2fb"]];
+const HILITE = "#3987e5", BASE = "#8d8c85", MUTED = "#55544f";
+const DEFAULTS = { x: "valence", y: "interoceptive", z: "concreteness", color: "group", group: "", size: "n", minn: 1 };
+
+let D, NORMS, IDX, state = { ...DEFAULTS }, selected = null;
+const $ = id => document.getElementById(id);
+const fmt = v => v == null ? "–" : v.toFixed(2);
+
+function opts(sel, items) { sel.innerHTML = items; }
+function normOptions(extra = "") {
+  return extra + FAMILY.map(([fam, ns]) =>
+    `<optgroup label="${fam}">${ns.map(n => `<option value="${n}">${LABEL[n]}</option>`).join("")}</optgroup>`).join("");
+}
+
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  for (const k of Object.keys(DEFAULTS)) if (p.has(k)) state[k] = k === "minn" ? +p.get(k) : p.get(k);
+  if (p.has("frame")) selected = p.get("frame");
+}
+function writeHash() {
+  const p = new URLSearchParams();
+  for (const k of Object.keys(DEFAULTS)) if (state[k] !== DEFAULTS[k]) p.set(k, state[k]);
+  if (selected) p.set("frame", selected);
+  history.replaceState(null, "", p.toString() ? "#" + p : location.pathname);
+}
+
+function sizes(frames) {
+  if (state.size === "uniform") return frames.map(() => 6);
+  const val = state.size === "n" ? (f => f.n) : (f => f.sd[IDX[state.size.slice(3)]]);
+  const vs = frames.map(val).filter(v => v != null);
+  const lo = Math.min(...vs), hi = Math.max(...vs);
+  // n is skewed (a few frames have 100+ words): use sqrt so mid-sized frames stay distinguishable
+  const t = state.size === "n" ? (v => Math.sqrt(v - lo) / Math.sqrt(hi - lo || 1)) : (v => (v - lo) / (hi - lo || 1));
+  return frames.map(f => { const v = val(f); return v == null ? 3 : 4 + 14 * t(v); });
+}
+
+function hoverText(f) {
+  const ax = ["x", "y", "z"].map(a => state[a]);
+  const lines = ax.map(n => `${LABEL[n]}: ${fmt(f.mean[IDX[n]])} <span style="color:${BASE}">± ${fmt(f.sd[IDX[n]])}</span>`);
+  return `<b>${f.name.replace(/_/g, " ")}</b><br><span style="color:${BASE}">${f.group.replace(/_/g, " ")} · ${f.n} word${f.n === 1 ? "" : "s"}</span><br>${lines.join("<br>")}`;
+}
+
+function trace(frames, extra) {
+  const [ix, iy, iz] = ["x", "y", "z"].map(a => IDX[state[a]]);
+  const ok = frames.filter(f => f.mean[ix] != null && f.mean[iy] != null && f.mean[iz] != null);
+  return Object.assign({
+    type: "scatter3d", mode: "markers",
+    x: ok.map(f => f.mean[ix]), y: ok.map(f => f.mean[iy]), z: ok.map(f => f.mean[iz]),
+    customdata: ok.map(f => f.name), text: ok.map(hoverText),
+    hovertemplate: "%{text}<extra></extra>",
+    marker: { size: sizes(ok), line: { width: 0 } },
+  }, extra(ok));
+}
+
+function axis(n) {
+  const i = IDX[n];
+  const vs = D.frames.map(f => f.mean[i]).filter(v => v != null);
+  const lo = Math.min(...vs), hi = Math.max(...vs), pad = (hi - lo) * 0.04;
+  return {
+    title: { text: `${LABEL[n]} (${SCALE(n)})`, font: { size: 12, color: "#c3c2b7" } },
+    range: [lo - pad, hi + pad], color: "#c3c2b7", gridcolor: "#33332f", zerolinecolor: "#33332f",
+    showbackground: false, tickfont: { size: 10, color: "#8d8c85" }, showspikes: false,
+  };
+}
+
+function render() {
+  const vis = D.frames.filter(f => f.n >= state.minn);
+  const traces = [];
+  if (state.color === "group") {
+    if (!state.group) {
+      traces.push(trace(vis, () => ({ name: "Frames", showlegend: false, marker: { color: HILITE, opacity: 0.8 } })));
+    } else {
+      const inG = vis.filter(f => f.group === state.group), out = vis.filter(f => f.group !== state.group);
+      traces.push(trace(out, () => ({ name: "Other frames", marker: { color: MUTED, opacity: 0.35 } })));
+      traces.push(trace(inG, () => ({ name: state.group.replace(/_/g, " "), marker: { color: HILITE, opacity: 1 } })));
+    }
+  } else {
+    const ci = IDX[state.color];
+    // Frame means cluster tightly, so stretch the colour scale over the 2nd–98th percentile
+    const cv = D.frames.map(f => f.mean[ci]).filter(v => v != null).sort((a, b) => a - b);
+    const q = p => cv[Math.round(p * (cv.length - 1))];
+    traces.push(trace(vis.filter(f => f.mean[ci] != null), ok => ({
+      name: LABEL[state.color], showlegend: false,
+      marker: { color: ok.map(f => f.mean[ci]), colorscale: SEQ, cmin: q(0.02), cmax: q(0.98), opacity: 0.9,
+        colorbar: { title: { text: `${LABEL[state.color]} (2nd–98th pct)`, side: "top", font: { size: 11, color: "#c3c2b7" } },
+          orientation: "h", x: 0.5, y: 0.02, len: 0.3, thickness: 10,
+          tickfont: { size: 10, color: "#8d8c85" }, outlinewidth: 0 } },
+    })));
+  }
+  // Ring around the selected frame
+  const sel = vis.find(f => f.name === selected);
+  if (sel) traces.push(trace([sel], () => ({ name: "Selected", showlegend: false, hoverinfo: "skip", hovertemplate: null,
+    marker: { size: 22, symbol: "circle-open", color: "#f0efec", line: { width: 2, color: "#f0efec" } } })));
+  // Every trace's marker sizes were computed within that trace; recompute on the full set so sizes are comparable
+  const sz = new Map(); const all = sizes(vis); vis.forEach((f, i) => sz.set(f.name, all[i]));
+  traces.forEach(t => { if (t.name !== "Selected") t.marker.size = t.customdata.map(n => sz.get(n)); });
+
+  Plotly.react("plot", traces, {
+    paper_bgcolor: "#1a1a19", font: { color: "#f0efec" }, margin: { l: 0, r: 0, t: 0, b: 0 },
+    uirevision: "keep", showlegend: !!state.group && state.color === "group",
+    legend: { x: 0.99, xanchor: "right", y: 0.06, bgcolor: "rgba(36,36,34,.9)", bordercolor: "#3a3a37", borderwidth: 1, font: { size: 11 } },
+    hoverlabel: { bgcolor: "#242422", bordercolor: "#3a3a37", font: { size: 12, color: "#f0efec" }, align: "left" },
+    scene: { xaxis: axis(state.x), yaxis: axis(state.y), zaxis: axis(state.z), aspectmode: "cube" },
+  }, { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["resetCameraLastSave3d"] });
+
+  const shown = traces[0] ? traces.filter(t => t.name !== "Selected").reduce((s, t) => s + t.x.length, 0) : 0;
+  $("meta").textContent = `${shown} of ${D.meta.frames_scored} scored frames shown · ` +
+    `${D.meta.lu_matched.toLocaleString()} / ${D.meta.lu_total.toLocaleString()} trigger words matched to norms`;
+  $("minnlabel").textContent = `Showing frames with ≥ ${state.minn} matched trigger word${state.minn === 1 ? "" : "s"}`;
+  $("grouprow").style.display = state.color === "group" ? "" : "none";
+  $("sizehint").textContent = state.size === "n" ? "Larger = more trigger words (square-root scale)"
+    : state.size.startsWith("sd:") ? `Larger = trigger words disagree more on ${LABEL[state.size.slice(3)].toLowerCase()} (SD); smallest = SD undefined`
+    : "";
+  writeHash();
+}
+
+function showPanel(name) {
+  const f = D.frames.find(x => x.name === name);
+  if (!f) return;
+  selected = name;
+  const cols = [...new Set([state.x, state.y, state.z, ...(state.color !== "group" ? [state.color] : [])])];
+  const isHuman = (w, i) => w.h === 1 || (Array.isArray(w.h) && w.h[i] === 1);
+  const words = [...f.words].sort((a, b) => (b.v[IDX[state.x]] ?? -1) - (a.v[IDX[state.x]] ?? -1));
+  const wrows = words.map(w => `<tr><td>${w.w}</td>${cols.map(n => {
+    const i = IDX[n]; return `<td class="${isHuman(w, i) ? "" : "est"}">${fmt(w.v[i])}</td>`; }).join("")}</tr>`).join("");
+  const nrows = FAMILY.flatMap(([, ns]) => ns).map(n => { const i = IDX[n];
+    return `<tr><td>${LABEL[n]} <span class="k">${SCALE(n)}</span></td><td>${fmt(f.mean[i])}</td><td>${fmt(f.sd[i])}</td><td class="k">${f.k[i]}</td></tr>`; }).join("");
+  const url = `https://framenet.icsi.berkeley.edu/frames/${encodeURIComponent(f.name)}`;
+  $("panelbody").innerHTML = `
+    <h3>${f.name.replace(/_/g, " ")}</h3>
+    <div class="sub">${f.group.replace(/_/g, " ")} · ${f.n} of ${f.n_lu} trigger words matched · <a href="${url}" target="_blank" rel="noopener">FrameNet entry ↗</a></div>
+    <div class="def">${f.def}</div>
+    <table><thead><tr><th>Trigger word</th>${cols.map(n => `<th>${LABEL[n]}</th>`).join("")}</tr></thead><tbody>${wrows}</tbody></table>
+    <div class="hint">Sorted by ${LABEL[state.x].toLowerCase()}. <i>Grey italic</i> = model estimate (no human rating for that word).</div>
+    ${f.unmatched.length ? `<div class="hint">Not in any norm set: ${f.unmatched.join(", ")}</div>` : ""}
+    <details><summary>All 17 norms: frame mean, SD, number of words</summary>
+      <table><thead><tr><th>Norm</th><th>Mean</th><th>SD</th><th>n</th></tr></thead><tbody>${nrows}</tbody></table></details>`;
+  $("panel").classList.add("open");
+  render();
+}
+
+function closePanel() { selected = null; $("panel").classList.remove("open"); render(); }
+
+function showAbout() {
+  selected = null;
+  $("panelbody").innerHTML = `<h3>About the data</h3><div class="def">
+    <p><b>Frames.</b> FrameNet 1.7 has 1,221 frames; ${D.meta.frames_lexical} have trigger words (lexical units), and
+    ${D.meta.frames_scored} have at least one trigger word that matches a norm set.</p>
+    <p><b>Norms.</b> Valence, arousal, dominance: Warriner et al. (2013) and Glasgow Norms (Scott et al., 2019), averaged where both exist.
+    Concreteness, imageability, semantic size: Glasgow Norms. Perceptual and action-effector strengths: Lancaster Sensorimotor Norms (Lynott et al., 2020).</p>
+    <p><b>Matching.</b> Each trigger word is lowercased, and bracketed parts are removed (“(can't) help” → “help”).
+    The same word with different parts of speech counts once per frame. Each word gets the human rating where one exists. Otherwise it gets a
+    model estimate (a Ridge regression on multilingual mpnet embeddings, cross-validated r ≈ .65–.83 depending on the norm).
+    Estimated values appear in grey italic in the frame panel.</p>
+    <p><b>Frame scores.</b> The mean and SD across the frame's matched trigger words. Frames with few matched words are noisy: use the
+    “Min words” slider to hide them.</p>
+    <p><b>Groups.</b> 46 coarse frame groups from Louvain community detection on FrameNet's frame-to-frame relation graph.</p>
+    <p class="muted">The view is saved in the URL, so you can share a link to a specific view.</p></div>`;
+  $("panel").classList.add("open");
+}
+
+fetch("frames.json").then(r => r.json()).then(data => {
+  D = data; NORMS = D.norms; IDX = Object.fromEntries(NORMS.map((n, i) => [n, i]));
+  readHash();
+  ["x", "y", "z"].forEach(a => opts($(a), normOptions()));
+  opts($("color"), normOptions(`<option value="group">Frame group</option>`));
+  const counts = {}; D.frames.forEach(f => { if (f.n) counts[f.group] = (counts[f.group] || 0) + 1; });
+  opts($("group"), `<option value="">— none (all frames one colour) —</option>` + Object.entries(counts)
+    .sort((a, b) => b[1] - a[1]).map(([g, c]) => `<option value="${g}">${g.replace(/_/g, " ")} (${c})</option>`).join(""));
+  opts($("size"), `<option value="n">Number of trigger words</option><option value="uniform">Uniform</option>` +
+    FAMILY.map(([fam, ns]) => `<optgroup label="Within-frame SD · ${fam.split(" (")[0]}">${ns.map(n => `<option value="sd:${n}">SD of ${LABEL[n]}</option>`).join("")}</optgroup>`).join(""));
+  $("framelist").innerHTML = D.frames.filter(f => f.n).map(f => `<option value="${f.name}">`).join("");
+
+  for (const k of ["x", "y", "z", "color", "group", "size"]) {
+    $(k).value = state[k];
+    $(k).addEventListener("change", e => { state[k] = e.target.value; render(); if (selected) showPanel(selected); });
+  }
+  $("minn").value = state.minn;
+  $("minn").addEventListener("input", e => { state.minn = +e.target.value; render(); });
+  $("search").addEventListener("change", e => {
+    const f = D.frames.find(x => x.name.toLowerCase() === e.target.value.trim().toLowerCase().replace(/ /g, "_"));
+    if (f) { if (f.n < state.minn) { state.minn = 1; $("minn").value = 1; } showPanel(f.name); }
+  });
+  $("closepanel").onclick = closePanel;
+  $("aboutlink").onclick = e => { e.preventDefault(); showAbout(); };
+  $("collapse").onclick = () => { const c = $("controls"); c.classList.toggle("min"); $("collapse").textContent = c.classList.contains("min") ? "+" : "–"; };
+
+  render();
+  $("plot").on("plotly_click", ev => { const p = ev.points && ev.points[0]; if (p && p.customdata) showPanel(p.customdata); });
+  if (selected) showPanel(selected);
+  $("loading").classList.add("hide");
+}).catch(err => { $("loading").textContent = "Could not load frames.json: " + err; });
+</script>
+</body>
+</html>
