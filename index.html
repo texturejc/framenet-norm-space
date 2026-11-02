@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FrameNet Norm Space — semantic frames in affective, sensorimotor and conceptual dimensions</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="frames.js" charset="utf-8"></script>
 <style>
   :root {
     color-scheme: dark;
@@ -285,7 +286,7 @@ function showAbout() {
   $("panel").classList.add("open");
 }
 
-fetch("frames.json").then(r => r.json()).then(data => {
+Promise.resolve(window.FRAME_DATA || Promise.reject("frames.js missing or failed to load")).then(data => {
   D = data; NORMS = D.norms; IDX = Object.fromEntries(NORMS.map((n, i) => [n, i]));
   readHash();
   ["x", "y", "z"].forEach(a => opts($(a), normOptions()));
@@ -315,7 +316,7 @@ fetch("frames.json").then(r => r.json()).then(data => {
   $("plot").on("plotly_click", ev => { const p = ev.points && ev.points[0]; if (p && p.customdata) showPanel(p.customdata); });
   if (selected) showPanel(selected);
   $("loading").classList.add("hide");
-}).catch(err => { $("loading").textContent = "Could not load frames.json: " + err; });
+}).catch(err => { $("loading").textContent = "Could not load frame data: " + err; });
 </script>
 </body>
 </html>

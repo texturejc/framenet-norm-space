@@ -6,8 +6,8 @@ words (lexical units). Any of 17 norms can be chosen for each axis: affective, c
 perceptual or action-effector.
 
 ## Files
-- `index.html`: the viewer (Plotly.js, no build step; loads `frames.json`).
-- `frames.json`: per-frame mean / SD / n for each norm, plus per-word values.
+- `index.html`: the viewer (Plotly.js, no build step; loads `frames.js`, so it also works opened straight from disk).
+- `frames.js` / `frames.json`: identical data (script / plain JSON); per-frame mean / SD / n for each norm, plus per-word values.
 - `build.py`: regenerates `frames.json` from FrameNet 1.7 and the norm project.
 
 ## Data

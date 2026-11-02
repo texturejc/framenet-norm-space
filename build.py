@@ -146,7 +146,10 @@ def main():
         },
         "frames": out_frames,
     }
-    a.out.write_text(json.dumps(payload, separators=(",", ":"), ensure_ascii=False))
+    blob = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    a.out.write_text(blob)
+    # Same data as a script, so index.html also works when opened straight from disk (file://)
+    a.out.with_suffix(".js").write_text("window.FRAME_DATA=" + blob + ";\n")
     print(f"wrote {a.out} ({a.out.stat().st_size/1e3:.0f} KB): "
           f"{payload['meta']['frames_scored']}/{len(out_frames)} frames scored, "
           f"{n_hit}/{n_lu} LUs matched")
