@@ -3,6 +3,7 @@
 Each frame's trigger words (lexical units) are matched to word norms.
 A word gets a human rating where one exists (Warriner/Glasgow/Lancaster);
 otherwise it gets the model estimate (mpnet + Ridge, English).
+Every value is rescaled from its native scale to 0-1 (clipped).
 Per frame and norm we store the mean, SD and number of matched words.
 
 Usage: python build.py [--fn PATH_TO_FRAMENET_V17] [--norms PATH_TO_NORM_PROJECT]
@@ -31,6 +32,16 @@ NORMS = [
     "auditory", "gustatory", "haptic", "interoceptive", "olfactory", "visual",
     "foot_leg", "hand_arm", "head", "mouth", "torso",
 ]
+# Native rating scales; every value is rescaled to 0-1 with these bounds
+SCALES = {n: (1, 9) for n in ["valence", "arousal", "dominance"]}
+SCALES.update({n: (1, 7) for n in ["concreteness", "imageability", "semantic_size"]})
+SCALES.update({n: (0, 5) for n in NORMS if n not in SCALES})
+
+
+def unit(v, norm):
+    """Native rating -> 0-1, clipped (a few model estimates fall just outside the scale)."""
+    lo, hi = SCALES[norm]
+    return min(1.0, max(0.0, (v - lo) / (hi - lo)))
 
 
 def clean_lemma(name: str) -> str:
@@ -48,7 +59,7 @@ def frame_definition(path: Path, max_len: int = 420) -> str:
     return text if len(text) <= max_len else text[: max_len].rsplit(" ", 1)[0] + "…"
 
 
-def r(x, nd=2):
+def r(x, nd=3):
     return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), nd)
 
 
@@ -79,9 +90,9 @@ def main():
         for n in NORMS:
             gv = None if g is None or pd.isna(g[n]) else float(g[n])
             if gv is not None:
-                vals.append(gv); human.append(1)
+                vals.append(unit(gv, n)); human.append(1)
             elif e is not None and not pd.isna(e[n]):
-                vals.append(float(e[n])); human.append(0)
+                vals.append(unit(float(e[n]), n)); human.append(0)
             else:
                 vals.append(np.nan); human.append(0)
         return vals, human
@@ -138,6 +149,7 @@ def main():
 
     payload = {
         "norms": NORMS,
+        "native_scales": {n: list(SCALES[n]) for n in NORMS},
         "meta": {
             "framenet": "FrameNet 1.7",
             "frames_scored": sum(1 for f in out_frames if f["n"] > 0),

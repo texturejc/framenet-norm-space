@@ -117,10 +117,10 @@ const LABEL = {
   foot_leg: "Foot / leg", hand_arm: "Hand / arm", head: "Head", mouth: "Mouth / throat", torso: "Torso",
 };
 const FAMILY = [
-  ["Affective (Warriner / Glasgow, 1–9)", ["valence", "arousal", "dominance"]],
-  ["Conceptual (Glasgow, 1–7)", ["concreteness", "imageability", "semantic_size"]],
-  ["Perceptual (Lancaster, 0–5)", ["auditory", "gustatory", "haptic", "interoceptive", "olfactory", "visual"]],
-  ["Action effector (Lancaster, 0–5)", ["foot_leg", "hand_arm", "head", "mouth", "torso"]],
+  ["Affective (Warriner / Glasgow)", ["valence", "arousal", "dominance"]],
+  ["Conceptual (Glasgow)", ["concreteness", "imageability", "semantic_size"]],
+  ["Perceptual (Lancaster)", ["auditory", "gustatory", "haptic", "interoceptive", "olfactory", "visual"]],
+  ["Action effector (Lancaster)", ["foot_leg", "hand_arm", "head", "mouth", "torso"]],
 ];
 const SCALE = n => ["valence","arousal","dominance"].includes(n) ? "1–9"
   : ["concreteness","imageability","semantic_size"].includes(n) ? "1–7" : "0–5";
@@ -131,7 +131,7 @@ const DEFAULTS = { x: "valence", y: "interoceptive", z: "concreteness", color: "
 
 let D, NORMS, IDX, state = { ...DEFAULTS }, selected = null;
 const $ = id => document.getElementById(id);
-const fmt = v => v == null ? "–" : v.toFixed(2);
+const fmt = v => v == null ? "–" : v.toFixed(2);  // all values are on a 0–1 scale
 
 function opts(sel, items) { sel.innerHTML = items; }
 function normOptions(extra = "") {
@@ -180,12 +180,9 @@ function trace(frames, extra) {
 }
 
 function axis(n) {
-  const i = IDX[n];
-  const vs = D.frames.map(f => f.mean[i]).filter(v => v != null);
-  const lo = Math.min(...vs), hi = Math.max(...vs), pad = (hi - lo) * 0.04;
   return {
-    title: { text: `${LABEL[n]} (${SCALE(n)})`, font: { size: 12, color: "#c3c2b7" } },
-    range: [lo - pad, hi + pad], color: "#c3c2b7", gridcolor: "#33332f", zerolinecolor: "#33332f",
+    title: { text: LABEL[n], font: { size: 12, color: "#c3c2b7" } },
+    range: [0, 1], dtick: 0.2, color: "#c3c2b7", gridcolor: "#33332f", zerolinecolor: "#33332f",
     showbackground: false, tickfont: { size: 10, color: "#8d8c85" }, showspikes: false,
   };
 }
@@ -210,7 +207,7 @@ function render() {
       name: LABEL[state.color], showlegend: false,
       marker: { color: ok.map(f => f.mean[ci]), colorscale: SEQ, cmin: q(0.02), cmax: q(0.98), opacity: 0.9,
         colorbar: { title: { text: `${LABEL[state.color]} (2nd–98th pct)`, side: "top", font: { size: 11, color: "#c3c2b7" } },
-          orientation: "h", x: 0.5, y: 0.02, len: 0.3, thickness: 10,
+          orientation: "h", x: 0.5, y: 0.01, yanchor: "bottom", len: 0.3, thickness: 10,
           tickfont: { size: 10, color: "#8d8c85" }, outlinewidth: 0 } },
     })));
   }
@@ -227,7 +224,8 @@ function render() {
     uirevision: "keep", showlegend: !!state.group && state.color === "group",
     legend: { x: 0.99, xanchor: "right", y: 0.06, bgcolor: "rgba(36,36,34,.9)", bordercolor: "#3a3a37", borderwidth: 1, font: { size: 11 } },
     hoverlabel: { bgcolor: "#242422", bordercolor: "#3a3a37", font: { size: 12, color: "#f0efec" }, align: "left" },
-    scene: { xaxis: axis(state.x), yaxis: axis(state.y), zaxis: axis(state.z), aspectmode: "cube" },
+    scene: { xaxis: axis(state.x), yaxis: axis(state.y), zaxis: axis(state.z), aspectmode: "cube",
+      domain: { x: [0, 1], y: [state.color === "group" ? 0 : 0.1, 1] } },
   }, { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["resetCameraLastSave3d"] });
 
   const shown = traces[0] ? traces.filter(t => t.name !== "Selected").reduce((s, t) => s + t.x.length, 0) : 0;
@@ -251,7 +249,7 @@ function showPanel(name) {
   const wrows = words.map(w => `<tr><td>${w.w}</td>${cols.map(n => {
     const i = IDX[n]; return `<td class="${isHuman(w, i) ? "" : "est"}">${fmt(w.v[i])}</td>`; }).join("")}</tr>`).join("");
   const nrows = FAMILY.flatMap(([, ns]) => ns).map(n => { const i = IDX[n];
-    return `<tr><td>${LABEL[n]} <span class="k">${SCALE(n)}</span></td><td>${fmt(f.mean[i])}</td><td>${fmt(f.sd[i])}</td><td class="k">${f.k[i]}</td></tr>`; }).join("");
+    return `<tr><td>${LABEL[n]} <span class="k">native ${SCALE(n)}</span></td><td>${fmt(f.mean[i])}</td><td>${fmt(f.sd[i])}</td><td class="k">${f.k[i]}</td></tr>`; }).join("");
   const url = `https://framenet.icsi.berkeley.edu/frames/${encodeURIComponent(f.name)}`;
   $("panelbody").innerHTML = `
     <h3>${f.name.replace(/_/g, " ")}</h3>
@@ -279,6 +277,9 @@ function showAbout() {
     The same word with different parts of speech counts once per frame. Each word gets the human rating where one exists. Otherwise it gets a
     model estimate (a Ridge regression on multilingual mpnet embeddings, cross-validated r ≈ .65–.83 depending on the norm).
     Estimated values appear in grey italic in the frame panel.</p>
+    <p><b>Scaling.</b> Every rating is rescaled from its native scale to 0–1: affective norms 1–9, Glasgow norms 1–7,
+    Lancaster norms 0–5. Each axis therefore runs from the bottom to the top of the original rating scale. A handful of model
+    estimates that fell slightly outside their scale were clipped to 0 or 1.</p>
     <p><b>Frame scores.</b> The mean and SD across the frame's matched trigger words. Frames with few matched words are noisy: use the
     “Min words” slider to hide them.</p>
     <p><b>Groups.</b> 46 coarse frame groups from Louvain community detection on FrameNet's frame-to-frame relation graph.</p>

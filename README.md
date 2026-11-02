@@ -25,6 +25,8 @@ perceptual or action-effector.
   listed under several parts of speech in one frame counts once.
 - 11,963 / 13,572 trigger words match. 148 frames have no trigger words and are excluded.
   12 more frames have trigger words but none match a norm.
+- All values are rescaled from their native scale (1–9, 1–7 or 0–5) to 0–1. About 120 model estimates
+  that fell slightly outside their scale are clipped to 0 or 1 before averaging.
 - SD is left blank for frames with fewer than 2 matched words on that norm.
 
 ## Rebuild
