@@ -20,7 +20,13 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  #plot { position: fixed; inset: 0; }
+  #plot, #rank { position: fixed; inset: 0; }
+  #rank { display: none; }
+  .tabs { display: inline-flex; gap: 2px; margin-top: 8px; pointer-events: auto; background: #262624;
+    border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+  .tabs button { background: none; border: 0; color: var(--muted); font-size: 12.5px; padding: 4px 12px;
+    border-radius: 4px; cursor: pointer; }
+  .tabs button.on { background: var(--accent); color: #fff; }
   a { color: #6da7ec; text-decoration: none; }
   a:hover { text-decoration: underline; }
 
@@ -30,7 +36,7 @@
   header p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); max-width: 720px; line-height: 1.45; }
   header a { pointer-events: auto; }
 
-  #controls { position: fixed; top: 100px; left: 16px; z-index: 6; width: 250px;
+  #controls { position: fixed; top: 128px; left: 16px; z-index: 6; width: 250px;
     background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     padding: 10px 12px 12px; font-size: 12.5px; max-height: calc(100vh - 120px); overflow-y: auto; }
   #controls h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
@@ -45,7 +51,7 @@
   #collapse { float: right; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; }
   #controls.min .body { display: none; }
 
-  #panel { position: fixed; top: 100px; right: 16px; bottom: 16px; z-index: 6; width: 380px;
+  #panel { position: fixed; top: 128px; right: 16px; bottom: 16px; z-index: 6; width: 380px;
     background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     padding: 12px 14px; font-size: 12.5px; overflow-y: auto; display: none; }
   #panel.open { display: block; }
@@ -76,25 +82,36 @@
 </head>
 <body>
 <div id="plot"></div>
+<div id="rank"></div>
 <header>
   <h1>FrameNet Norm Space</h1>
   <p>Each point is a FrameNet 1.7 semantic frame, placed by the average psycholinguistic norm
   ratings of its trigger words. Choose any three norms for the axes · drag to rotate · scroll to zoom ·
   hover for a summary · click a frame for its full details. <a href="#about" id="aboutlink">About the data</a></p>
+  <div class="tabs"><button id="tab3d" class="on">3D map</button><button id="tabrank">Rankings</button></div>
 </header>
 
 <div id="controls">
   <button id="collapse" title="Collapse">–</button>
   <h2>View</h2>
   <div class="body">
+    <div class="only3d">
     <div class="row"><label for="x">X axis</label><select id="x"></select></div>
     <div class="row"><label for="y">Y axis</label><select id="y"></select></div>
     <div class="row"><label for="z">Z axis</label><select id="z"></select></div>
     <div class="sep"></div>
     <div class="row"><label for="color">Colour</label><select id="color"></select></div>
+    </div>
+    <div class="onlyrank" style="display:none">
+    <div class="row"><label for="metric">Metric</label><select id="metric"></select></div>
+    <div class="hint" id="metrichint"></div>
+    <div class="sep"></div>
+    </div>
     <div class="row" id="grouprow"><label for="group">Group</label><select id="group"></select></div>
+    <div class="only3d">
     <div class="row"><label for="size">Size</label><select id="size"></select></div>
     <div class="hint" id="sizehint"></div>
+    </div>
     <div class="sep"></div>
     <div class="row"><label for="minn">Min words</label><input type="range" id="minn" min="1" max="20" value="1" /></div>
     <div class="hint" id="minnlabel"></div>
@@ -122,14 +139,21 @@ const FAMILY = [
   ["Perceptual (Lancaster)", ["auditory", "gustatory", "haptic", "interoceptive", "olfactory", "visual"]],
   ["Action effector (Lancaster)", ["foot_leg", "hand_arm", "head", "mouth", "torso"]],
 ];
+const IXLABEL = { sensorimotor_intensity: "Sensorimotor intensity", affective_intensity: "Affective intensity",
+  concreteness_index: "Concreteness (abstract → concrete)" };
+const IXHINT = {
+  sensorimotor_intensity: "Overall strength across the 11 Lancaster dimensions (Minkowski-3; Lynott et al., 2020), averaged over the frame's words.",
+  affective_intensity: "Mean of valence extremity (distance from neutral, so pleasant and unpleasant both count) and arousal, computed per word, then averaged.",
+  concreteness_index: "Glasgow concreteness, averaged over the frame's words. A position from abstract to concrete rather than an intensity." };
 const SCALE = n => ["valence","arousal","dominance"].includes(n) ? "1–9"
   : ["concreteness","imageability","semantic_size"].includes(n) ? "1–7" : "0–5";
 // Sequential blue ramp, stepped for the dark surface (light = high).
 const SEQ = [[0, "#184f95"], [0.33, "#2a78d6"], [0.66, "#6da7ec"], [1, "#cde2fb"]];
 const HILITE = "#3987e5", BASE = "#8d8c85", MUTED = "#55544f";
-const DEFAULTS = { x: "valence", y: "interoceptive", z: "concreteness", color: "group", group: "", size: "n", minn: 1 };
+const DEFAULTS = { x: "valence", y: "interoceptive", z: "concreteness", color: "group", group: "", size: "n", minn: 1,
+  view: "3d", metric: "ix:sensorimotor_intensity", rminn: 3 };
 
-let D, NORMS, IDX, state = { ...DEFAULTS }, selected = null;
+let D, NORMS, IDX, IXI, state = { ...DEFAULTS }, selected = null;
 const $ = id => document.getElementById(id);
 const fmt = v => v == null ? "–" : v.toFixed(2);  // all values are on a 0–1 scale
 
@@ -139,9 +163,23 @@ function normOptions(extra = "") {
     `<optgroup label="${fam}">${ns.map(n => `<option value="${n}">${LABEL[n]}</option>`).join("")}</optgroup>`).join("");
 }
 
+function metricLabel(m) { return m.startsWith("ix:") ? IXLABEL[m.slice(3)] : LABEL[m]; }
+function metricOf(f, m) {   // [mean, sd, n]
+  if (m.startsWith("ix:")) { const i = IXI[m.slice(3)]; return [f.ix_mean[i], f.ix_sd[i], f.ix_k[i]]; }
+  const i = IDX[m]; return [f.mean[i], f.sd[i], f.k[i]];
+}
+function wordIndices(v) {
+  const g = n => v[IDX[n]];
+  const lan = NORMS.slice(6).map(g);
+  const sm = lan.some(x => x == null) ? null : Math.cbrt(lan.reduce((s, x) => s + x ** 3, 0)) / Math.cbrt(lan.length);
+  const af = g("valence") == null || g("arousal") == null ? null : (Math.abs(g("valence") - 0.5) * 2 + g("arousal")) / 2;
+  return { sensorimotor_intensity: sm, affective_intensity: af, concreteness_index: g("concreteness") };
+}
+function wordMetric(w, m) { return m.startsWith("ix:") ? wordIndices(w.v)[m.slice(3)] : w.v[IDX[m]]; }
+
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
-  for (const k of Object.keys(DEFAULTS)) if (p.has(k)) state[k] = k === "minn" ? +p.get(k) : p.get(k);
+  for (const k of Object.keys(DEFAULTS)) if (p.has(k)) state[k] = k === "minn" || k === "rminn" ? +p.get(k) : p.get(k);
   if (p.has("frame")) selected = p.get("frame");
 }
 function writeHash() {
@@ -188,6 +226,108 @@ function axis(n) {
 }
 
 function render() {
+  const rank = state.view === "rank";
+  $("plot").style.display = rank ? "none" : ""; $("rank").style.display = rank ? "block" : "none";
+  $("tab3d").classList.toggle("on", !rank); $("tabrank").classList.toggle("on", rank);
+  document.querySelectorAll(".only3d").forEach(e => e.style.display = rank ? "none" : "");
+  document.querySelectorAll(".onlyrank").forEach(e => e.style.display = rank ? "" : "none");
+  if (rank) renderRank(); else render3d();
+  const mk = rank ? "rminn" : "minn";
+  $("minn").value = state[mk];
+  $("minnlabel").textContent = `Showing frames with ≥ ${state[mk]} matched trigger word${state[mk] === 1 ? "" : "s"}` +
+    (rank ? " (rankings default to 3: smaller frames are too uncertain to rank)" : "");
+  $("grouprow").style.display = rank || state.color === "group" ? "" : "none";
+  writeHash();
+}
+
+
+// Clicks on the 3D plot are detected here rather than with Plotly's "plotly_click": in 3D scenes that event fires from
+// inside Plotly's redraw, so opening the panel (which redraws) re-fired it endlessly and froze the page. It also fires
+// when a rotate-drag ends over a point. Instead: remember the hovered frame; a press-release that barely moves opens it.
+// Plotly only adds .on() to a div once it has been plotted, so each binder runs after that plot's first draw.
+let bound3d = false, boundRank = false;
+function bind3d() {
+  if (bound3d) return; bound3d = true;
+  let hovered = null, down = null;
+  $("plot").on("plotly_hover", ev => { const p = ev.points && ev.points[0]; hovered = p && p.customdata ? p.customdata : null; });
+  $("plot").on("plotly_unhover", () => { hovered = null; });
+  $("plot").addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; }, true);
+  $("plot").addEventListener("pointerup", e => {
+    const moved = down ? Math.hypot(e.clientX - down[0], e.clientY - down[1]) : Infinity;
+    down = null;
+    if (moved > 5 || !hovered || (hovered === selected && $("panel").classList.contains("open"))) return;
+    const name = hovered;
+    setTimeout(() => showPanel(name), 0);
+  }, true);
+}
+// 2D plots don't have the 3D click problem, but defer anyway so the panel's redraw happens after the event
+function bindRank() {
+  if (boundRank) return; boundRank = true;
+  $("rank").on("plotly_click", ev => { const p = ev.points && ev.points[0];
+    if (p && p.customdata && p.customdata !== selected) setTimeout(() => showPanel(p.customdata), 0); });
+}
+
+function renderRank() {
+  const m = state.metric;
+  const vis = D.frames.filter(f => metricOf(f, m)[2] >= state.rminn && metricOf(f, m)[0] != null)
+    .sort((a, b) => metricOf(a, m)[0] - metricOf(b, m)[0]);
+  const N = vis.length;
+  const ci = f => { const [, sd, k] = metricOf(f, m); return sd == null || k < 2 ? 0 : 1.96 * sd / Math.sqrt(k); };
+  const tr = (sub, color, opacity, name) => ({
+    type: "scatter", mode: "markers", name, showlegend: !!state.group,
+    x: sub.map(f => vis.indexOf(f) + 1), y: sub.map(f => metricOf(f, m)[0]),
+    error_y: { type: "data", array: sub.map(ci), visible: true, thickness: 1, width: 0,
+      color: color === HILITE ? "rgba(57,135,229,0.22)" : "rgba(120,119,113,0.18)" },
+    customdata: sub.map(f => f.name),
+    text: sub.map(f => { const [mu, , k] = metricOf(f, m); const r = vis.indexOf(f) + 1;
+      return `<b>${f.name.replace(/_/g, " ")}</b><br><span style="color:${BASE}">${f.group.replace(/_/g, " ")} · ${k} word${k === 1 ? "" : "s"}</span>` +
+        `<br>${metricLabel(m)}: ${fmt(mu)} <span style="color:${BASE}">± ${fmt(ci(f))} (95% CI)</span><br>Rank ${r} of ${N} (low → high)`; }),
+    hovertemplate: "%{text}<extra></extra>",
+    marker: { size: 6, color, opacity, line: { width: 0 } },
+  });
+  const traces = [];
+  if (state.group) {
+    traces.push(tr(vis.filter(f => f.group !== state.group), MUTED, 0.6, "Other frames"));
+    traces.push(tr(vis.filter(f => f.group === state.group), HILITE, 1, state.group.replace(/_/g, " ")));
+  } else traces.push(tr(vis, HILITE, 0.8, "Frames"));
+  // Label the extremes, and the selected frame
+  const lab = [...vis.slice(0, 5), ...vis.slice(-5)];
+  const sel = vis.find(f => f.name === selected);
+  // lowest 5: labels stacked above-right; highest 5: stacked below-left (the empty sides of the S-curve)
+  // Labels sit at fixed, evenly spaced positions (data coordinates) in the empty corners, with leader lines
+  const lo = Math.min(...vis.map(f => metricOf(f, m)[0] - ci(f))), hi = Math.max(...vis.map(f => metricOf(f, m)[0] + ci(f)));
+  const yr = hi - lo;
+  const ann = lab.map((f, j) => {
+    const low = j < 5, k = low ? j : 9 - j;   // slot order follows the points, so leader lines don't cross
+    return { x: vis.indexOf(f) + 1, y: metricOf(f, m)[0], text: f.name.replace(/_/g, " "), showarrow: true,
+      axref: "x", ayref: "y", ax: low ? N * 0.07 : N * 0.93, ay: low ? lo + yr * (0.56 + 0.05 * k) : lo + yr * (0.36 - 0.05 * k),
+      arrowhead: 0, arrowwidth: 0.7, arrowcolor: "#6b6a65", xanchor: low ? "left" : "right",
+      font: { size: 10.5, color: "#c3c2b7" }, bgcolor: "rgba(26,26,25,.85)" };
+  });
+  if (sel) {
+    traces.push({ type: "scatter", mode: "markers", x: [vis.indexOf(sel) + 1], y: [metricOf(sel, m)[0]], hoverinfo: "skip", showlegend: false,
+      marker: { size: 16, symbol: "circle-open", color: "#f0efec", line: { width: 2, color: "#f0efec" } } });
+    ann.push({ x: vis.indexOf(sel) + 1, y: metricOf(sel, m)[0], text: `<b>${sel.name.replace(/_/g, " ")}</b>`, showarrow: true,
+      arrowcolor: "#f0efec", ax: 0, ay: -40, font: { size: 12, color: "#f0efec" }, bgcolor: "rgba(36,36,34,.9)" });
+  }
+  const left = $("controls").classList.contains("min") ? 70 : 340;
+  const right = $("panel").classList.contains("open") ? 420 : 40;
+  Plotly.react("rank", traces, {
+    paper_bgcolor: "#1a1a19", plot_bgcolor: "#1a1a19", font: { color: "#f0efec" },
+    margin: { l: left, r: right, t: 130, b: 60 }, uirevision: m, annotations: ann,
+    showlegend: !!state.group, legend: { x: 0.01, y: 0.99, bgcolor: "rgba(36,36,34,.9)", bordercolor: "#3a3a37", borderwidth: 1, font: { size: 11 } },
+    hoverlabel: { bgcolor: "#242422", bordercolor: "#3a3a37", font: { size: 12, color: "#f0efec" }, align: "left" },
+    xaxis: { title: { text: `Frames ranked from lowest to highest (n = ${N})`, font: { size: 12, color: "#c3c2b7" } },
+      color: "#8d8c85", gridcolor: "#2c2c2a", zeroline: false, range: [-N * 0.02, N * 1.02] },
+    yaxis: { title: { text: `${metricLabel(m)} (0–1)`, font: { size: 12, color: "#c3c2b7" } }, color: "#8d8c85",
+      gridcolor: "#2c2c2a", zeroline: false },
+  }, { displaylogo: false, responsive: true });
+  bindRank();
+  $("metrichint").textContent = (m.startsWith("ix:") ? IXHINT[m.slice(3)] + " " : "") + "Whiskers: 95% CI of the frame mean.";
+  $("meta").textContent = `${N} of ${D.meta.frames_scored} scored frames ranked by ${metricLabel(m).toLowerCase()}`;
+}
+
+function render3d() {
   const vis = D.frames.filter(f => f.n >= state.minn);
   const traces = [];
   if (state.color === "group") {
@@ -227,27 +367,31 @@ function render() {
     scene: { xaxis: axis(state.x), yaxis: axis(state.y), zaxis: axis(state.z), aspectmode: "cube",
       domain: { x: [0, 1], y: [state.color === "group" ? 0 : 0.1, 1] } },
   }, { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["resetCameraLastSave3d"] });
+  bind3d();
 
   const shown = traces[0] ? traces.filter(t => t.name !== "Selected").reduce((s, t) => s + t.x.length, 0) : 0;
   $("meta").textContent = `${shown} of ${D.meta.frames_scored} scored frames shown · ` +
     `${D.meta.lu_matched.toLocaleString()} / ${D.meta.lu_total.toLocaleString()} trigger words matched to norms`;
-  $("minnlabel").textContent = `Showing frames with ≥ ${state.minn} matched trigger word${state.minn === 1 ? "" : "s"}`;
-  $("grouprow").style.display = state.color === "group" ? "" : "none";
   $("sizehint").textContent = state.size === "n" ? "Larger = more trigger words (square-root scale)"
     : state.size.startsWith("sd:") ? `Larger = trigger words disagree more on ${LABEL[state.size.slice(3)].toLowerCase()} (SD); smallest = SD undefined`
     : "";
-  writeHash();
 }
 
 function showPanel(name) {
   const f = D.frames.find(x => x.name === name);
   if (!f) return;
   selected = name;
-  const cols = [...new Set([state.x, state.y, state.z, ...(state.color !== "group" ? [state.color] : [])])];
+  const rank = state.view === "rank";
+  const cols = rank ? [state.metric] : [...new Set([state.x, state.y, state.z, ...(state.color !== "group" ? [state.color] : [])])];
+  const sortBy = rank ? state.metric : state.x;
   const isHuman = (w, i) => w.h === 1 || (Array.isArray(w.h) && w.h[i] === 1);
-  const words = [...f.words].sort((a, b) => (b.v[IDX[state.x]] ?? -1) - (a.v[IDX[state.x]] ?? -1));
-  const wrows = words.map(w => `<tr><td>${w.w}</td>${cols.map(n => {
-    const i = IDX[n]; return `<td class="${isHuman(w, i) ? "" : "est"}">${fmt(w.v[i])}</td>`; }).join("")}</tr>`).join("");
+  // a summary index is shown as estimated if any value it uses is estimated
+  const ixNorms = { sensorimotor_intensity: NORMS.slice(6), affective_intensity: ["valence", "arousal"], concreteness_index: ["concreteness"] };
+  const human = (w, m) => m.startsWith("ix:") ? ixNorms[m.slice(3)].every(n => isHuman(w, IDX[n])) : isHuman(w, IDX[m]);
+  const words = [...f.words].sort((a, b) => (wordMetric(b, sortBy) ?? -1) - (wordMetric(a, sortBy) ?? -1));
+  const wrows = words.map(w => `<tr><td>${w.w}</td>${cols.map(m =>
+    `<td class="${human(w, m) ? "" : "est"}">${fmt(wordMetric(w, m))}</td>`).join("")}</tr>`).join("");
+  const irows = D.indices.map((n, i) => `<tr><td>${IXLABEL[n]}</td><td>${fmt(f.ix_mean[i])}</td><td>${fmt(f.ix_sd[i])}</td><td class="k">${f.ix_k[i]}</td></tr>`).join("");
   const nrows = FAMILY.flatMap(([, ns]) => ns).map(n => { const i = IDX[n];
     return `<tr><td>${LABEL[n]} <span class="k">native ${SCALE(n)}</span></td><td>${fmt(f.mean[i])}</td><td>${fmt(f.sd[i])}</td><td class="k">${f.k[i]}</td></tr>`; }).join("");
   const url = `https://framenet.icsi.berkeley.edu/frames/${encodeURIComponent(f.name)}`;
@@ -255,11 +399,11 @@ function showPanel(name) {
     <h3>${f.name.replace(/_/g, " ")}</h3>
     <div class="sub">${f.group.replace(/_/g, " ")} · ${f.n} of ${f.n_lu} trigger words matched · <a href="${url}" target="_blank" rel="noopener">FrameNet entry ↗</a></div>
     <div class="def">${f.def}</div>
-    <table><thead><tr><th>Trigger word</th>${cols.map(n => `<th>${LABEL[n]}</th>`).join("")}</tr></thead><tbody>${wrows}</tbody></table>
-    <div class="hint">Sorted by ${LABEL[state.x].toLowerCase()}. <i>Grey italic</i> = model estimate (no human rating for that word).</div>
+    <table><thead><tr><th>Trigger word</th>${cols.map(m => `<th>${metricLabel(m)}</th>`).join("")}</tr></thead><tbody>${wrows}</tbody></table>
+    <div class="hint">Sorted by ${metricLabel(sortBy).toLowerCase()}. <i>Grey italic</i> = model estimate (no human rating for that word).</div>
     ${f.unmatched.length ? `<div class="hint">Not in any norm set: ${f.unmatched.join(", ")}</div>` : ""}
-    <details><summary>All 17 norms: frame mean, SD, number of words</summary>
-      <table><thead><tr><th>Norm</th><th>Mean</th><th>SD</th><th>n</th></tr></thead><tbody>${nrows}</tbody></table></details>`;
+    <details><summary>Summary indices and all 17 norms: frame mean, SD, number of words</summary>
+      <table><thead><tr><th>Norm</th><th>Mean</th><th>SD</th><th>n</th></tr></thead><tbody>${irows}${nrows}</tbody></table></details>`;
   $("panel").classList.add("open");
   render();
 }
@@ -275,13 +419,18 @@ function showAbout() {
     Concreteness, imageability, semantic size: Glasgow Norms. Perceptual and action-effector strengths: Lancaster Sensorimotor Norms (Lynott et al., 2020).</p>
     <p><b>Matching.</b> Each trigger word is lowercased, and bracketed parts are removed (“(can't) help” → “help”).
     The same word with different parts of speech counts once per frame. Each word gets the human rating where one exists. Otherwise it gets a
-    model estimate (a Ridge regression on multilingual mpnet embeddings, cross-validated r ≈ .65–.83 depending on the norm).
+    model estimate (Ridge regression on multilingual sentence-embedding models: mpnet, or LaBSE for concreteness, imageability and
+    gustatory; cross-validated r = .60–.90 depending on the norm).
     Estimated values appear in grey italic in the frame panel.</p>
     <p><b>Scaling.</b> Every rating is rescaled from its native scale to 0–1: affective norms 1–9, Glasgow norms 1–7,
     Lancaster norms 0–5. Each axis therefore runs from the bottom to the top of the original rating scale. A handful of model
     estimates that fell slightly outside their scale were clipped to 0 or 1.</p>
     <p><b>Frame scores.</b> The mean and SD across the frame's matched trigger words. Frames with few matched words are noisy: use the
     “Min words” slider to hide them.</p>
+    <p><b>Summary indices (Rankings tab).</b> <i>Sensorimotor intensity</i>: Minkowski-3 overall strength across the 11 Lancaster
+    dimensions (Lynott et al., 2020), divided by 11<sup>1/3</sup> so it runs 0–1. <i>Affective intensity</i>: the mean of valence extremity
+    (|valence − 0.5| × 2) and arousal. <i>Concreteness</i>: Glasgow concreteness. Each is computed per word and then averaged over the frame,
+    so pleasant and unpleasant words do not cancel out. Whiskers show 95% confidence intervals of the frame mean.</p>
     <p><b>Groups.</b> 46 coarse frame groups from Louvain community detection on FrameNet's frame-to-frame relation graph.</p>
     <p class="muted">The view is saved in the URL, so you can share a link to a specific view.</p></div>`;
   $("panel").classList.add("open");
@@ -292,6 +441,8 @@ Promise.resolve(window.FRAME_DATA || Promise.reject("frames.js missing or failed
   readHash();
   ["x", "y", "z"].forEach(a => opts($(a), normOptions()));
   opts($("color"), normOptions(`<option value="group">Frame group</option>`));
+  IXI = Object.fromEntries(D.indices.map((n, i) => [n, i]));
+  opts($("metric"), `<optgroup label="Summary indices">${D.indices.map(n => `<option value="ix:${n}">${IXLABEL[n]}</option>`).join("")}</optgroup>` + normOptions());
   const counts = {}; D.frames.forEach(f => { if (f.n) counts[f.group] = (counts[f.group] || 0) + 1; });
   opts($("group"), `<option value="">— none (all frames one colour) —</option>` + Object.entries(counts)
     .sort((a, b) => b[1] - a[1]).map(([g, c]) => `<option value="${g}">${g.replace(/_/g, " ")} (${c})</option>`).join(""));
@@ -299,35 +450,23 @@ Promise.resolve(window.FRAME_DATA || Promise.reject("frames.js missing or failed
     FAMILY.map(([fam, ns]) => `<optgroup label="Within-frame SD · ${fam.split(" (")[0]}">${ns.map(n => `<option value="sd:${n}">SD of ${LABEL[n]}</option>`).join("")}</optgroup>`).join(""));
   $("framelist").innerHTML = D.frames.filter(f => f.n).map(f => `<option value="${f.name}">`).join("");
 
-  for (const k of ["x", "y", "z", "color", "group", "size"]) {
+  for (const k of ["x", "y", "z", "color", "group", "size", "metric"]) {
     $(k).value = state[k];
     $(k).addEventListener("change", e => { state[k] = e.target.value; render(); if (selected) showPanel(selected); });
   }
   $("minn").value = state.minn;
-  $("minn").addEventListener("input", e => { state.minn = +e.target.value; render(); });
+  $("minn").addEventListener("input", e => { state[state.view === "rank" ? "rminn" : "minn"] = +e.target.value; render(); });
   $("search").addEventListener("change", e => {
     const f = D.frames.find(x => x.name.toLowerCase() === e.target.value.trim().toLowerCase().replace(/ /g, "_"));
-    if (f) { if (f.n < state.minn) { state.minn = 1; $("minn").value = 1; } showPanel(f.name); }
+    if (f) { const mk = state.view === "rank" ? "rminn" : "minn"; if (f.n < state[mk]) state[mk] = 1; showPanel(f.name); }
   });
   $("closepanel").onclick = closePanel;
+  $("tab3d").onclick = () => { state.view = "3d"; render(); if (selected) showPanel(selected); };
+  $("tabrank").onclick = () => { state.view = "rank"; render(); if (selected) showPanel(selected); };
   $("aboutlink").onclick = e => { e.preventDefault(); showAbout(); };
-  $("collapse").onclick = () => { const c = $("controls"); c.classList.toggle("min"); $("collapse").textContent = c.classList.contains("min") ? "+" : "–"; };
+  $("collapse").onclick = () => { const c = $("controls"); c.classList.toggle("min"); $("collapse").textContent = c.classList.contains("min") ? "+" : "–"; if (state.view === "rank") render(); };
 
   render();
-  // Clicks are detected here rather than with Plotly's "plotly_click": in 3D scenes that event fires from inside
-  // Plotly's redraw, so opening the panel (which redraws) re-fired it endlessly and froze the page. It also fires
-  // when a rotate-drag ends over a point. Instead: remember the hovered frame; a press-release that barely moves opens it.
-  let hovered = null, down = null;
-  $("plot").on("plotly_hover", ev => { const p = ev.points && ev.points[0]; hovered = p && p.customdata ? p.customdata : null; });
-  $("plot").on("plotly_unhover", () => { hovered = null; });
-  $("plot").addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; }, true);
-  $("plot").addEventListener("pointerup", e => {
-    const moved = down ? Math.hypot(e.clientX - down[0], e.clientY - down[1]) : Infinity;
-    down = null;
-    if (moved > 5 || !hovered || (hovered === selected && $("panel").classList.contains("open"))) return;
-    const name = hovered;
-    setTimeout(() => showPanel(name), 0);
-  }, true);
   if (selected) showPanel(selected);
   $("loading").classList.add("hide");
 }).catch(err => { $("loading").textContent = "Could not load frame data: " + err; });

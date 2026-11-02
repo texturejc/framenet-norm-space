@@ -44,6 +44,21 @@ def unit(v, norm):
     return min(1.0, max(0.0, (v - lo) / (hi - lo)))
 
 
+# Summary indices, computed per word (0-1 values) and then averaged over each frame's lemmas.
+# Affective intensity uses valence *extremity* so that positive and negative words don't cancel.
+INDICES = ["sensorimotor_intensity", "affective_intensity", "concreteness_index"]
+LANCASTER = NORMS[6:]
+
+
+def word_indices(v):
+    """v: list of 0-1 values in NORMS order (None/NaN = missing) -> [sensorimotor, affective, concreteness]."""
+    g = {n: (None if x is None or (isinstance(x, float) and np.isnan(x)) else x) for n, x in zip(NORMS, v)}
+    lan = [g[n] for n in LANCASTER]
+    sm = None if None in lan else float((np.array(lan) ** 3).sum() ** (1 / 3) / len(lan) ** (1 / 3))
+    af = None if None in (g["valence"], g["arousal"]) else (abs(g["valence"] - 0.5) * 2 + g["arousal"]) / 2
+    return [sm, af, g["concreteness"]]
+
+
 def clean_lemma(name: str) -> str:
     """'(can't) help' -> 'help'; lowercase; collapse spaces."""
     s = re.sub(r"\([^)]*\)", " ", name)
@@ -138,17 +153,27 @@ def main():
                 mean = [r(x) for x in np.nanmean(M, 0)]
                 sd = [r(s) if c > 1 else None for s, c in zip(np.nanstd(M, 0, ddof=1), k)]
             k = [int(c) for c in k]
+        ixm = ixs = [None] * len(INDICES); ixk = [0] * len(INDICES)
+        if matched:
+            X = np.array([[np.nan if x is None else x for x in word_indices(m["v"])] for m in matched], float)
+            ixk = [int(c) for c in (~np.isnan(X)).sum(0)]
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore", RuntimeWarning)
+                ixm = [r(x) for x in np.nanmean(X, 0)]
+                ixs = [r(sd_) if c > 1 else None for sd_, c in zip(np.nanstd(X, 0, ddof=1), ixk)]
         out_frames.append({
             "name": name, "id": int(fid),
             "group": clusters.get(name, "Unassigned"),
             "def": frame_definition(a.fn / "frame" / f"{name}.xml"),
             "n": len(matched), "n_lu": len(lus),
             "mean": mean, "sd": sd, "k": k,
+            "ix_mean": ixm, "ix_sd": ixs, "ix_k": ixk,
             "words": matched, "unmatched": unmatched,
         })
 
     payload = {
         "norms": NORMS,
+        "indices": INDICES,
         "native_scales": {n: list(SCALES[n]) for n in NORMS},
         "meta": {
             "framenet": "FrameNet 1.7",
