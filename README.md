@@ -1,5 +1,7 @@
 # FrameNet Norm Space
 
+**Live:** https://texturejc.github.io/framenet-norm-space/
+
 Interactive 3D map of the ~1,060 FrameNet 1.7 semantic frames that have trigger words with
 norm values. Each frame is placed by the average psycholinguistic norm ratings of its trigger
 words (lexical units). Any of 17 norms can be chosen for each axis: affective, conceptual,
