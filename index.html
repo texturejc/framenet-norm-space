@@ -314,7 +314,20 @@ Promise.resolve(window.FRAME_DATA || Promise.reject("frames.js missing or failed
   $("collapse").onclick = () => { const c = $("controls"); c.classList.toggle("min"); $("collapse").textContent = c.classList.contains("min") ? "+" : "–"; };
 
   render();
-  $("plot").on("plotly_click", ev => { const p = ev.points && ev.points[0]; if (p && p.customdata) showPanel(p.customdata); });
+  // Clicks are detected here rather than with Plotly's "plotly_click": in 3D scenes that event fires from inside
+  // Plotly's redraw, so opening the panel (which redraws) re-fired it endlessly and froze the page. It also fires
+  // when a rotate-drag ends over a point. Instead: remember the hovered frame; a press-release that barely moves opens it.
+  let hovered = null, down = null;
+  $("plot").on("plotly_hover", ev => { const p = ev.points && ev.points[0]; hovered = p && p.customdata ? p.customdata : null; });
+  $("plot").on("plotly_unhover", () => { hovered = null; });
+  $("plot").addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; }, true);
+  $("plot").addEventListener("pointerup", e => {
+    const moved = down ? Math.hypot(e.clientX - down[0], e.clientY - down[1]) : Infinity;
+    down = null;
+    if (moved > 5 || !hovered || (hovered === selected && $("panel").classList.contains("open"))) return;
+    const name = hovered;
+    setTimeout(() => showPanel(name), 0);
+  }, true);
   if (selected) showPanel(selected);
   $("loading").classList.add("hide");
 }).catch(err => { $("loading").textContent = "Could not load frame data: " + err; });
